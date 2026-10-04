@@ -326,13 +326,34 @@ function letterSections(items){
   if(groups.length>1&&groups[groups.length-1].items.length<4){const tail=groups.pop(),prev=groups[groups.length-1];prev.keys.push(...tail.keys);prev.items.push(...tail.items)}
   return groups.map(g=>{const first=g.keys[0],last=g.keys[g.keys.length-1];return{label:first===last?first:`${first}–${last}`,items:g.items}});
 }
+function playSections(items){
+  const played=items.filter(a=>(playCounts[a.id]||0)>0),never=items.filter(a=>!(playCounts[a.id]>0));
+  return[{label:"Most played",items:played.slice(0,10)},{label:"Played",items:played.slice(10)},{label:"Never played",items:never}].filter(sec=>sec.items.length);
+}
+function dateSections(items){
+  const now=new Date(),DAY=864e5,year=now.getFullYear(),groups=[];
+  const bucket=a=>{if(!a.savedAt)return"Undated";const d=new Date(a.savedAt),age=(now-d)/DAY;if(age<=7)return"This week";if(age<=30)return"This month";return d.getFullYear()===year?"Earlier this year":String(d.getFullYear())};
+  const month=a=>a.savedAt?new Date(a.savedAt).toLocaleString("en",{month:"short",year:"numeric"}):"Undated";
+  items.forEach(a=>{const label=bucket(a),last=groups[groups.length-1];if(last&&last.label===label)last.items.push(a);else groups.push({label,items:[a]})});
+  const sized=[];
+  groups.forEach(g=>{
+    if(g.items.length<=60||/^This/.test(g.label)){sized.push(g);return}
+    g.items.forEach(a=>{const label=month(a),last=sized[sized.length-1];if(last&&last.label===label&&last.split)last.items.push(a);else sized.push({label,items:[a],split:true})});
+  });
+  for(let i=0;i<sized.length&&sized.length>1;){
+    if(sized[i].items.length<3){
+      if(i+1<sized.length){sized[i+1].items.unshift(...sized[i].items);sized.splice(i,1)}
+      else{sized[i-1].items.push(...sized[i].items);sized.splice(i,1);i--}
+    }else i++;
+  }
+  return sized.map(g=>({label:g.label,items:g.items}));
+}
 function shelfSections(){
   const sorted=orderedAlbums();
-  if(sortMode!=="alphabetical"&&sortMode!=="artist")return[{items:sorted}];
   const favs=pinFavourites?sorted.filter(a=>favourites.has(a.id)):[],rest=pinFavourites?sorted.filter(a=>!favourites.has(a.id)):sorted,out=[];
   if(favs.length)out.push({label:"★",items:favs});
-  out.push(...letterSections(rest));
-  out.forEach(sec=>{sec.key=(sortMode==="artist"?"artist:":"")+sec.label;sec.collapsed=collapsedSections.has(sec.key)});
+  out.push(...(sortMode==="most-played"?playSections(rest):sortMode==="recently-added"?dateSections(rest):letterSections(rest)));
+  out.forEach(sec=>{sec.key=(sortMode==="alphabetical"?"":sortMode+":")+sec.label;sec.collapsed=collapsedSections.has(sec.key)});
   return out;
 }
 function makeTab(sec){
