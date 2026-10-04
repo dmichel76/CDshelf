@@ -208,7 +208,7 @@
 <script>
 const CLIENT_ID = "2b6728e3e602456b90b02711389ee95d";
 const REDIRECT_URI = "http://127.0.0.1:5173/";
-const SCOPES = ["streaming","user-library-read","user-read-playback-state","user-modify-playback-state","user-read-currently-playing","user-read-private","user-read-email"].join(" ");
+const SCOPES = ["streaming","user-library-read","user-library-modify","user-read-playback-state","user-modify-playback-state","user-read-currently-playing","user-read-private","user-read-email"].join(" ");
 const FAVOURITES_KEY = "cd-shelf-demo-favourites-v1";
 const SORT_KEY = "cd-shelf-demo-sort-v1", PIN_KEY = "cd-shelf-demo-pin-favourites-v1", PLAY_COUNTS_KEY = "cd-shelf-demo-play-counts-v1";
 const DEMO_MODE = false;
@@ -319,7 +319,7 @@ function renderShelf() {
     bindSwipeToClose(face);
     overlay.addEventListener("click",e=>e.stopPropagation());
     card.querySelector(".favourite-btn").addEventListener("click",e=>{ e.stopPropagation(); toggleFavourite(a); });
-    card.querySelector(".track-like-btn").addEventListener("click",e=>{e.stopPropagation();const key=`${selectedAlbum?.id}:${demoTrack}`;demoLikedTracks.has(key)?demoLikedTracks.delete(key):demoLikedTracks.add(key);updateDemoPlayer();status(demoLikedTracks.has(key)?"Demo song liked":"Demo song unliked")});
+    card.querySelector(".track-like-btn").addEventListener("click",e=>{e.stopPropagation();toggleTrackLike()});
     card.querySelector(".shuffle").addEventListener("click",()=>toggleShuffle().catch(e=>status(e.message)));
     card.addEventListener("transitionend",e=>{if(e.target===card&&e.propertyName==="width"&&card.classList.contains("open")&&!card.classList.contains("returning"))centreOpenCard(card)});
     card.querySelector(".play").addEventListener("click",()=>togglePlay().catch(e=>status(e.message)));
@@ -411,6 +411,28 @@ function playbackAlbumId(s) {
   return ctx.startsWith("spotify:album:")?ctx.split(":").pop():
     (s?.track_window?.current_track?.album?.id||(s?.track_window?.current_track?.album?.uri||"").split(":").pop());
 }
+// Song likes live in the Spotify library; likedTracks caches track URI -> liked.
+const likedTracks=new Map(),likeChecked=new Set();
+function refreshLikeButton(){
+  const tr=currentState?.track_window?.current_track;if(!tr||!selectedAlbum)return;
+  const card=document.querySelector(`.album-case[data-id="${CSS.escape(selectedAlbum.id)}"]`),button=card?.querySelector(".track-like-btn");if(!button)return;
+  const on=likedTracks.get(tr.uri)===true;button.classList.toggle("active",on);button.setAttribute("aria-pressed",String(on));
+}
+async function checkLiked(uri){
+  if(!uri||likedTracks.has(uri)||likeChecked.has(uri))return;
+  likeChecked.add(uri);
+  try{const result=await api(`/me/library/contains?uris=${encodeURIComponent(uri)}`);if(!likedTracks.has(uri))likedTracks.set(uri,result?.[0]===true);refreshLikeButton()}
+  catch(e){status(e.message);setTimeout(()=>likeChecked.delete(uri),15000)}
+}
+async function toggleTrackLike(){
+  if(DEMO_MODE){const key=`${selectedAlbum?.id}:${demoTrack}`;demoLikedTracks.has(key)?demoLikedTracks.delete(key):demoLikedTracks.add(key);updateDemoPlayer();status(demoLikedTracks.has(key)?"Demo song liked":"Demo song unliked");return}
+  const tr=currentState?.track_window?.current_track;
+  if(!tr||!selectedAlbum||playbackAlbumId(currentState)!==selectedAlbum.id){status("Play a song from this album to like it.");return}
+  const uri=tr.uri,next=likedTracks.get(uri)!==true;
+  likedTracks.set(uri,next);refreshLikeButton();
+  try{await api(`/me/library?uris=${encodeURIComponent(uri)}`,{method:next?"PUT":"DELETE"});status(next?`Liked ${tr.name}`:`Removed ${tr.name} from liked songs`)}
+  catch(e){likedTracks.set(uri,!next);refreshLikeButton();status(/API 40[13]/.test(e.message)?"Reconnect Spotify from settings to allow liking songs.":e.message)}
+}
 const trackLists=new Map();
 async function loadTrackNumbers(album){
   if(trackLists.has(album.id))return;
@@ -432,6 +454,7 @@ function updatePlayer(s) {
   const entry=tracks.find(t=>t.uri===tr.uri||t.linked_from?.uri===tr.uri||t.uri===tr.linked_from?.uri);
   const number=entry?.track_number||tr.track_number;
   card.querySelector(".track-pos").textContent=number?`Track ${number}`:"";
+  refreshLikeButton();void checkLiked(tr.uri);
   if(!trackLists.has(selectedAlbum.id))void loadTrackNumbers(selectedAlbum);
   card.querySelector(".play").textContent=s.paused?"▶":"❚❚"; card.querySelector(".duration").textContent=fmt(s.duration); card.querySelector(".elapsed").textContent=fmt(s.position);
   card.querySelector(".seek").value=s.duration?Math.round(s.position/s.duration*1000):0;
