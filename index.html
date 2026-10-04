@@ -68,8 +68,11 @@
     .group-tab:hover { background: linear-gradient(#fffcf2,#e4dece); }
     .group-tab:focus-visible { outline: 2px solid #8fb8ff; outline-offset: 2px; }
     .tab-count { font-weight: 600; letter-spacing: .04em; opacity: .65; }
-    .group-head.collapsed { flex: 0 0 auto; width: auto; height: auto; align-self: flex-end; }
-    .group-head.collapsed .group-tab { position: static; height: 30px; border-radius: 7px 7px 0 0; }
+    .group-head.collapsed { flex: 0 0 34px; width: 34px; }
+    .group-head.collapsed .group-tab {
+      inset: 0; top: 0; width: 100%; height: 100%; padding: 14px 0; justify-content: flex-start; gap: 10px;
+      writing-mode: vertical-rl; border-radius: 6px 6px 0 0;
+    }
 
     .album-case {
       flex: 0 0 var(--spine-w); width: var(--spine-w); height: var(--case-h); position: relative;
@@ -309,7 +312,8 @@ function orderedAlbums() {
   });
 }
 const TAB_TARGET=12;
-function sectionLetter(a){const c=String(a.name||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().charAt(0).toUpperCase();return/[A-Z]/.test(c)?c:"#"}
+const sectionText=a=>sortMode==="artist"?a.artists?.[0]?.name:a.name;
+function sectionLetter(a){const c=String(sectionText(a)||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().charAt(0).toUpperCase();return/[A-Z]/.test(c)?c:"#"}
 function letterSections(items){
   const runs=[];items.forEach(a=>{const k=sectionLetter(a),last=runs[runs.length-1];if(last&&last.key===k)last.items.push(a);else runs.push({key:k,items:[a]})});
   const groups=[];let cur=null;
@@ -324,11 +328,11 @@ function letterSections(items){
 }
 function shelfSections(){
   const sorted=orderedAlbums();
-  if(sortMode!=="alphabetical")return[{items:sorted}];
+  if(sortMode!=="alphabetical"&&sortMode!=="artist")return[{items:sorted}];
   const favs=pinFavourites?sorted.filter(a=>favourites.has(a.id)):[],rest=pinFavourites?sorted.filter(a=>!favourites.has(a.id)):sorted,out=[];
   if(favs.length)out.push({label:"★",items:favs});
   out.push(...letterSections(rest));
-  out.forEach(sec=>{sec.collapsed=collapsedSections.has(sec.label)});
+  out.forEach(sec=>{sec.key=(sortMode==="artist"?"artist:":"")+sec.label;sec.collapsed=collapsedSections.has(sec.key)});
   return out;
 }
 function makeTab(sec){
@@ -336,14 +340,14 @@ function makeTab(sec){
   const tab=document.createElement("button");tab.type="button";tab.className="group-tab";tab.setAttribute("aria-expanded",String(!sec.collapsed));
   tab.setAttribute("aria-label",`${sec.label==="★"?"Favourites":sec.label}, ${sec.items.length} albums, ${sec.collapsed?"collapsed":"expanded"}`);
   tab.innerHTML=`<span>${escapeHtml(sec.label)}</span>${sec.collapsed?`<span class="tab-count">${sec.items.length}</span>`:""}`;
-  tab.addEventListener("click",()=>toggleSection(sec.label));
+  tab.addEventListener("click",()=>toggleSection(sec.key));
   bindCaseScroll(tab);head.appendChild(tab);return head;
 }
-function toggleSection(label){
-  const collapsing=!collapsedSections.has(label);
-  if(collapsing)collapsedSections.add(label);else collapsedSections.delete(label);
+function toggleSection(key){
+  const collapsing=!collapsedSections.has(key);
+  if(collapsing)collapsedSections.add(key);else collapsedSections.delete(key);
   try{localStorage.setItem(COLLAPSED_KEY,JSON.stringify([...collapsedSections]))}catch{}
-  const sec=shelfSections().find(x=>x.label===label);
+  const sec=shelfSections().find(x=>x.key===key);
   if(collapsing&&selectedAlbum&&sec?.items.some(a=>a.id===selectedAlbum.id))closeAlbum();else renderShelf();
   requestAnimationFrame(()=>{const shelf=$("shelf"),track=shelf.querySelector(".shelf-track");if(track)setShelfOffset(Math.min(shelfOffset,Math.max(0,track.offsetWidth-shelf.clientWidth+40)))});
 }
