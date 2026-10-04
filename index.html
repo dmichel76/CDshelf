@@ -317,6 +317,7 @@ function sectionLetter(a){const c=String(sectionText(a)||"").normalize("NFD").re
 function letterSections(items){
   const runs=[];items.forEach(a=>{const k=sectionLetter(a),last=runs[runs.length-1];if(last&&last.key===k)last.items.push(a);else runs.push({key:k,items:[a]})});
   const groups=[];let cur=null;
+  if(runs[0]&&runs[0].key==="#"&&runs[0].items.length>=5)groups.push({keys:["#"],items:runs.shift().items});
   runs.forEach(r=>{
     if(cur&&(cur.items.length>=TAB_TARGET||(cur.items.length>=TAB_TARGET/2&&cur.items.length+r.items.length>TAB_TARGET*1.5))){groups.push(cur);cur=null}
     if(!cur)cur={keys:[],items:[]};
