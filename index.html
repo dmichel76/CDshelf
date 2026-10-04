@@ -57,6 +57,19 @@
       border-top: 1px solid rgba(255,255,255,.17); box-shadow: 0 14px 28px rgba(0,0,0,.65); pointer-events: none;
     }
     .loader { padding: 100px 20px; color: var(--muted); }
+    .shelf.has-tabs { height: calc(var(--case-h) + 46px); padding-top: 46px; }
+    .group-head { flex: 0 0 0; width: 0; height: var(--case-h); position: relative; z-index: 3; margin-left: 12px; }
+    .group-head:first-child { margin-left: 0; }
+    .group-tab {
+      position: absolute; left: 0; top: -28px; height: 26px; padding: 0 14px; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+      border: 0; border-radius: 7px 7px 0 0; cursor: pointer; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      color: #17140f; background: linear-gradient(#f7f3e8,#d8d2c1); box-shadow: 0 -2px 8px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.7);
+    }
+    .group-tab:hover { background: linear-gradient(#fffcf2,#e4dece); }
+    .group-tab:focus-visible { outline: 2px solid #8fb8ff; outline-offset: 2px; }
+    .tab-count { font-weight: 600; letter-spacing: .04em; opacity: .65; }
+    .group-head.collapsed { flex: 0 0 auto; width: auto; height: auto; align-self: flex-end; }
+    .group-head.collapsed .group-tab { position: static; height: 30px; border-radius: 7px 7px 0 0; }
 
     .album-case {
       flex: 0 0 var(--spine-w); width: var(--spine-w); height: var(--case-h); position: relative;
@@ -223,6 +236,9 @@ let sortMode = localStorage.getItem(SORT_KEY);
 if(!["alphabetical","artist","most-played","recently-added"].includes(sortMode)) sortMode = "alphabetical";
 let pinFavourites = localStorage.getItem(PIN_KEY) !== "false";
 let playCounts = JSON.parse(localStorage.getItem(PLAY_COUNTS_KEY) || "{}");
+const COLLAPSED_KEY = "cd-shelf-collapsed-sections-v1";
+let collapsedSections = new Set();
+try { collapsedSections = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]")); } catch {}
 let demoPaused = true, demoPosition = 0, demoTrack = 0, demoTimer = null;
 let demoLikedTracks = new Set();
 const DEMO_TRACKS = ["Opening Track","Night Drive","Signal in the Noise","A Different Light","Home Again"];
@@ -292,9 +308,52 @@ function orderedAlbums() {
     return text(a.name).localeCompare(text(b.name));
   });
 }
+const TAB_TARGET=12;
+function sectionLetter(a){const c=String(a.name||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().charAt(0).toUpperCase();return/[A-Z]/.test(c)?c:"#"}
+function letterSections(items){
+  const runs=[];items.forEach(a=>{const k=sectionLetter(a),last=runs[runs.length-1];if(last&&last.key===k)last.items.push(a);else runs.push({key:k,items:[a]})});
+  const groups=[];let cur=null;
+  runs.forEach(r=>{
+    if(cur&&(cur.items.length>=TAB_TARGET||(cur.items.length>=TAB_TARGET/2&&cur.items.length+r.items.length>TAB_TARGET*1.5))){groups.push(cur);cur=null}
+    if(!cur)cur={keys:[],items:[]};
+    cur.keys.push(r.key);cur.items.push(...r.items);
+  });
+  if(cur)groups.push(cur);
+  if(groups.length>1&&groups[groups.length-1].items.length<4){const tail=groups.pop(),prev=groups[groups.length-1];prev.keys.push(...tail.keys);prev.items.push(...tail.items)}
+  return groups.map(g=>{const first=g.keys[0],last=g.keys[g.keys.length-1];return{label:first===last?first:`${first}–${last}`,items:g.items}});
+}
+function shelfSections(){
+  const sorted=orderedAlbums();
+  if(sortMode!=="alphabetical")return[{items:sorted}];
+  const favs=pinFavourites?sorted.filter(a=>favourites.has(a.id)):[],rest=pinFavourites?sorted.filter(a=>!favourites.has(a.id)):sorted,out=[];
+  if(favs.length)out.push({label:"★",items:favs});
+  out.push(...letterSections(rest));
+  out.forEach(sec=>{sec.collapsed=collapsedSections.has(sec.label)});
+  return out;
+}
+function makeTab(sec){
+  const head=document.createElement("div");head.className="group-head"+(sec.collapsed?" collapsed":"");
+  const tab=document.createElement("button");tab.type="button";tab.className="group-tab";tab.setAttribute("aria-expanded",String(!sec.collapsed));
+  tab.setAttribute("aria-label",`${sec.label==="★"?"Favourites":sec.label}, ${sec.items.length} albums, ${sec.collapsed?"collapsed":"expanded"}`);
+  tab.innerHTML=`<span>${escapeHtml(sec.label)}</span>${sec.collapsed?`<span class="tab-count">${sec.items.length}</span>`:""}`;
+  tab.addEventListener("click",()=>toggleSection(sec.label));
+  bindCaseScroll(tab);head.appendChild(tab);return head;
+}
+function toggleSection(label){
+  const collapsing=!collapsedSections.has(label);
+  if(collapsing)collapsedSections.add(label);else collapsedSections.delete(label);
+  try{localStorage.setItem(COLLAPSED_KEY,JSON.stringify([...collapsedSections]))}catch{}
+  const sec=shelfSections().find(x=>x.label===label);
+  if(collapsing&&selectedAlbum&&sec?.items.some(a=>a.id===selectedAlbum.id))closeAlbum();else renderShelf();
+  requestAnimationFrame(()=>{const shelf=$("shelf"),track=shelf.querySelector(".shelf-track");if(track)setShelfOffset(Math.min(shelfOffset,Math.max(0,track.offsetWidth-shelf.clientWidth+40)))});
+}
 function renderShelf() {
   const shelf=$("shelf"),selectedId=selectedAlbum?.id; shelf.innerHTML="";const track=document.createElement("div");track.className="shelf-track";track.style.transform=`translate3d(${-shelfOffset}px,0,0)`;shelf.appendChild(track);
-  orderedAlbums().forEach(a=>{
+  const sections=shelfSections();shelf.classList.toggle("has-tabs",sections.some(sec=>sec.label));
+  sections.forEach(sec=>{
+  if(sec.label)track.appendChild(makeTab(sec));
+  if(sec.collapsed)return;
+  sec.items.forEach(a=>{
     const artist=a.artists.map(x=>x.name).join(", "),image=a.images?.[0]?.url||"";
     const card=document.createElement("article"); card.className="album-case"; card.dataset.id=a.id;
     if(favourites.has(a.id)) card.classList.add("favourite");
@@ -330,6 +389,7 @@ function renderShelf() {
     seek.addEventListener("change",async e=>{ if(DEMO_MODE){demoPosition=180000*(Number(e.target.value)/1000);updateDemoPlayer()}else if(currentState&&player)await player.seek(Math.round(currentState.duration*(Number(e.target.value)/1000))); });
     track.appendChild(card);
     if(shouldOpen)requestAnimationFrame(()=>requestAnimationFrame(()=>{card.classList.add("open");requestAnimationFrame(()=>centreOpenCard(card))}));
+  });
   });
   if(!selectedId)requestAnimationFrame(()=>setShelfOffset(shelfOffset));
 }
