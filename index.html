@@ -199,7 +199,7 @@
     <section class="menu-section"><div class="menu-label">Spotify account</div><button id="menuAccountBtn" class="btn">Reconnect Spotify</button></section>
     <section class="menu-section"><div class="menu-label">Sort albums</div><div class="sort-options">
       <button class="sort-option" data-sort="alphabetical">Album title</button><button class="sort-option" data-sort="artist">Artist</button>
-      <button class="sort-option" data-sort="genre">Genre</button><button class="sort-option" data-sort="most-played">Most played here</button>
+      <button class="sort-option" data-sort="most-played">Most played here</button>
       <button class="sort-option" data-sort="recently-added">Recently added</button>
     </div><label class="pin-row"><span>Keep favourites on the left</span><input id="pinFavourites" type="checkbox"></label></section>
   </div>
@@ -219,7 +219,8 @@ let token = null, refreshToken = null, expiresAt = 0, player = null, deviceId = 
 let shuffleEnabled=false, shuffleBusy=false;
 let albums = [], selectedAlbum = null, currentState = null, shelfOffset = 0;
 let favourites = new Set(JSON.parse(localStorage.getItem(FAVOURITES_KEY) || "[]"));
-let sortMode = localStorage.getItem(SORT_KEY) || "alphabetical";
+let sortMode = localStorage.getItem(SORT_KEY);
+if(!["alphabetical","artist","most-played","recently-added"].includes(sortMode)) sortMode = "alphabetical";
 let pinFavourites = localStorage.getItem(PIN_KEY) !== "false";
 let playCounts = JSON.parse(localStorage.getItem(PLAY_COUNTS_KEY) || "{}");
 let demoPaused = true, demoPosition = 0, demoTrack = 0, demoTimer = null;
@@ -286,7 +287,6 @@ function orderedAlbums() {
   return [...albums].sort((a,b)=>{
     if(pinFavourites){const pinned=Number(favourites.has(b.id))-Number(favourites.has(a.id));if(pinned)return pinned}
     if(sortMode==="artist")return text(a.artists?.[0]?.name).localeCompare(text(b.artists?.[0]?.name))||text(a.name).localeCompare(text(b.name));
-    if(sortMode==="genre")return text(a.genre||"Other").localeCompare(text(b.genre||"Other"))||text(a.artists?.[0]?.name).localeCompare(text(b.artists?.[0]?.name))||text(a.name).localeCompare(text(b.name));
     if(sortMode==="most-played")return (playCounts[b.id]||0)-(playCounts[a.id]||0)||text(a.name).localeCompare(text(b.name));
     if(sortMode==="recently-added")return new Date(b.savedAt||0)-new Date(a.savedAt||0)||text(a.name).localeCompare(text(b.name));
     return text(a.name).localeCompare(text(b.name));
