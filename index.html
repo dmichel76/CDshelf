@@ -216,7 +216,7 @@
       <button class="sort-option" data-sort="alphabetical">Album title</button><button class="sort-option" data-sort="artist">Artist</button>
       <button class="sort-option" data-sort="most-played">Most played here</button>
       <button class="sort-option" data-sort="recently-added">Recently added</button>
-    </div><label class="pin-row"><span>Keep favourites on the left</span><input id="pinFavourites" type="checkbox"></label></section>
+    </div><label class="pin-row"><span>Keep favourites on the left</span><input id="pinFavourites" type="checkbox"></label><label class="pin-row"><span>Show section tabs</span><input id="showTabs" type="checkbox"></label></section>
   </div>
 </div>
 
@@ -225,7 +225,7 @@ const CLIENT_ID = "2b6728e3e602456b90b02711389ee95d";
 const REDIRECT_URI = "http://127.0.0.1:5173/";
 const SCOPES = ["streaming","user-library-read","user-library-modify","user-read-playback-state","user-modify-playback-state","user-read-currently-playing","user-read-private","user-read-email"].join(" ");
 const FAVOURITES_KEY = "cd-shelf-demo-favourites-v1";
-const SORT_KEY = "cd-shelf-demo-sort-v1", PIN_KEY = "cd-shelf-demo-pin-favourites-v1", PLAY_COUNTS_KEY = "cd-shelf-demo-play-counts-v1";
+const SORT_KEY = "cd-shelf-demo-sort-v1", PIN_KEY = "cd-shelf-demo-pin-favourites-v1", TABS_KEY = "cd-shelf-show-tabs-v1", PLAY_COUNTS_KEY = "cd-shelf-demo-play-counts-v1";
 const DEMO_MODE = false;
 const $ = id => document.getElementById(id);
 const status = msg => $("status").textContent = msg;
@@ -237,6 +237,7 @@ let favourites = new Set(JSON.parse(localStorage.getItem(FAVOURITES_KEY) || "[]"
 let sortMode = localStorage.getItem(SORT_KEY);
 if(!["alphabetical","artist","most-played","recently-added"].includes(sortMode)) sortMode = "alphabetical";
 let pinFavourites = localStorage.getItem(PIN_KEY) !== "false";
+let showTabs = localStorage.getItem(TABS_KEY) !== "false";
 let playCounts = JSON.parse(localStorage.getItem(PLAY_COUNTS_KEY) || "{}");
 const COLLAPSED_KEY = "cd-shelf-collapsed-sections-v1";
 let collapsedSections = new Set();
@@ -350,6 +351,7 @@ function dateSections(items){
 }
 function shelfSections(){
   const sorted=orderedAlbums();
+  if(!showTabs)return[{items:sorted}];
   const favs=pinFavourites?sorted.filter(a=>favourites.has(a.id)):[],rest=pinFavourites?sorted.filter(a=>!favourites.has(a.id)):sorted,out=[];
   if(favs.length)out.push({label:"★",items:favs});
   out.push(...(sortMode==="most-played"?playSections(rest):sortMode==="recently-added"?dateSections(rest):letterSections(rest)));
@@ -451,7 +453,7 @@ function toggleFavourite(a) {
   status(favourites.has(a.id)?`${a.name} added to favourites`:`${a.name} removed from favourites`);
 }
 function showControls(face,overlay) { overlay.classList.add("visible"); }
-function refreshMenu(){document.querySelectorAll(".sort-option").forEach(button=>button.classList.toggle("active",button.dataset.sort===sortMode));$("pinFavourites").checked=pinFavourites}
+function refreshMenu(){document.querySelectorAll(".sort-option").forEach(button=>button.classList.toggle("active",button.dataset.sort===sortMode));$("pinFavourites").checked=pinFavourites;$("showTabs").checked=showTabs}
 function openMenu(){const overlay=$("menuOverlay");refreshMenu();overlay.hidden=false;requestAnimationFrame(()=>overlay.classList.add("open"))}
 function closeMenu(){const overlay=$("menuOverlay");overlay.classList.remove("open");setTimeout(()=>{if(!overlay.classList.contains("open"))overlay.hidden=true},220)}
 function setSort(mode){sortMode=mode;localStorage.setItem(SORT_KEY,mode);refreshMenu();renderShelf()}
@@ -648,6 +650,7 @@ $("menuAccountBtn").addEventListener("click",login);
 $("menuOverlay").addEventListener("click",e=>{if(e.target===$("menuOverlay"))closeMenu()});
 document.querySelectorAll(".sort-option").forEach(button=>button.addEventListener("click",()=>setSort(button.dataset.sort)));
 $("pinFavourites").addEventListener("change",e=>{pinFavourites=e.target.checked;localStorage.setItem(PIN_KEY,String(pinFavourites));renderShelf()});
+$("showTabs").addEventListener("change",e=>{showTabs=e.target.checked;localStorage.setItem(TABS_KEY,String(showTabs));renderShelf()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("menuOverlay").hidden){closeMenu();return}if(e.key==="Escape"&&selectedAlbum)closeAlbum();if(e.key==="ArrowLeft")setShelfOffset(shelfOffset-300);if(e.key==="ArrowRight")setShelfOffset(shelfOffset+300)});
 bindShelfScroll();
 
